@@ -1,0 +1,441 @@
+---
+title: "Code Appendix"
+output:
+  pdf_document:
+    df_print: paged
+---
+
+```{r}
+data=read.table("student-mat.csv",sep=";",header=TRUE)
+library(ggplot2)
+library(gridExtra)
+library(car)
+library(dplyr)
+library(corrplot)
+#install.packages("randomForest")
+#install.packages("caret")
+library(randomForest)
+library(caret)
+```
+
+
+```{r}
+#fit a model to see if g1 and g2 affect g3
+model1 = lm(G3 ~ G1 + G2, data = data)
+
+summary(model1)
+```
+
+```{r}
+#residual graph
+plot(model1$fitted.values, model1$residuals, 
+     xlab = "Fitted Values", ylab = "Residuals",
+     main = "Residual Plot")
+abline(h = 0, col = "red", lty = 2)
+
+qqnorm(model1$residuals)
+qqline(model1$residuals)
+```
+
+```{r}
+#graph G1 and G2 against G3
+ggplot(data, aes(x = G1, y = G3)) +
+  geom_point(aes(color = "G1"), alpha = 0.5) +  
+  geom_point(aes(x = G2, y = G3, color = "G2"), alpha = 0.5) +  
+  labs(x = "G1 and G2", y = "G3", title = "G3 vs G1 and G2") +
+  theme_classic() +
+  scale_color_manual(name = "Grades", values = c("G1" = "blue", "G2" = "red"),
+                     labels = c("G1", "G2"))
+```
+
+
+```{r}
+#remove all the data that y = 0
+
+reduced.data = data[data$G3 != 0, ]
+
+#redo the model
+ggplot(reduced.data, aes(x = G1, y = G3)) +
+  geom_point(aes(color = "G1"), alpha = 0.5) +  
+  geom_point(aes(x = G2, y = G3, color = "G2"), alpha = 0.5) +  
+  labs(x = "G1 and G2", y = "G3", title = "G3 vs G1 and G2") +
+  theme_classic() +
+  scale_color_manual(name = "Grades", values = c("G1" = "blue", "G2" = "red"),
+                     labels = c("G1", "G2"))
+```
+
+```{r}
+#model after outliers are removed
+model2 = lm (G3 ~ G1 + G2, data = reduced.data)
+
+summary(model2)
+plot(model2$fitted.values, model2$residuals, 
+     xlab = "Fitted Values", ylab = "Residuals",
+     main = "Residual Plot")
+abline(h = 0, col = "red", lty = 2)
+
+qqnorm(model2$residuals)
+qqline(model2$residuals)
+```
+```{r}
+#Box-Cox transformation didn't change normality that much?
+model2 = lm(G3 ~ G1 + G2, data = reduced.data)
+plot(model2, which=1)
+#perform a power transformation on G3 using the powerTransform() function
+p1 = powerTransform(model2)
+#prints coefficients of the power transformation
+coef(p1, round=TRUE)
+#perform Box-Cox transformation on G3 using the estimated lamdba value from the power transformation
+transformed_G3 = bcPower(reduced.data$G3, p1$roundlam)
+#fit a new model with transformed G3
+new_model = lm(transformed_G3 ~ G1 + G2, data = reduced.data)
+summary(new_model)
+plot(new_model, which=2)
+```
+
+```{r}
+#histogram of G3
+hist(reduced.data$G3, 
+     col="purple",
+     prob = TRUE,
+     xlab = "G3",
+     main = "Distribution of G3")
+
+lines(density(reduced.data$G3),
+      lwd = 2,
+      col = "red")
+```
+
+
+
+```{r}
+cor(reduced.data$G1, reduced.data$G3)
+cor(reduced.data$G2, reduced.data$G3)
+# strong correlations
+```
+
+```{r}
+#the more absences a student has, the less the grade is 
+cor(reduced.data$failures, reduced.data$G3)
+summary(lm(G3 ~ failures, reduced.data))
+```
+
+```{r}
+#almost 0 correlation
+cor(reduced.data$freetime, reduced.data$G3)
+summary(lm(G3 ~ freetime, reduced.data))
+```
+
+```{r}
+#the more a student goes out, the more their grade decreases
+cor(reduced.data$goout, reduced.data$G3) # weak neg correlation
+summary(lm(G3 ~ goout, reduced.data)) # negative relationship
+```
+
+```{r}
+#summary statistics for G3 vs. internet
+summary(lm(G3 ~ internet, reduced.data))
+```
+
+```{r}
+#higher education has correlation with G3
+cor(ifelse(reduced.data$higher == 'yes', 1, 0), reduced.data$G3)
+summary(lm(G3 ~ higher, reduced.data))
+```
+
+```{r}
+# parents education level has correlation with G3
+
+cor(reduced.data$Medu, reduced.data$G3)
+cor(reduced.data$Fedu, reduced.data$G3)
+
+ggplot(reduced.data, aes(x = factor(Medu), y = G3)) +
+  geom_boxplot() +
+  labs(title = "Final Grades by Mothers' Education Level",
+       x = "Mothers' Education Level",
+       y = "Final Grade")
+
+ggplot(reduced.data, aes(x = factor(Fedu), y = G3)) +
+  geom_boxplot() +
+  labs(title = "Final Grades by Fathers' Education Level",
+       x = "Fathers' Education Level",
+       y = "Final Grade")
+
+model_parent = lm(G3 ~ Medu + Fedu, reduced.data)
+summary(model_parent)
+plot(model_parent)
+
+```
+
+
+```{r}
+#turn parent's job into numerical varaibles
+temp1 = data.frame(reduced.data$Mjob,reduced.data$Fjob, reduced.data$G3)
+temp2 = temp1 %>% 
+  mutate(mother = recode(reduced.data$Mjob, 
+                              "at_home" = 1,
+                              "teacher" = 2,
+                              "services" = 3,
+                              "health" = 4,
+                              "other" = 5))
+
+cor(temp2$mother, temp2$reduced.data.G3)
+summary(lm(reduced.data.G3 ~ mother, temp2))
+
+temp2 = temp2 %>% 
+  mutate(father= recode(reduced.data$Fjob, 
+                              "at_home" = 1,
+                              "teacher" = 2,
+                              "services" = 3,
+                              "health" = 4,
+                              "other" = 5))
+
+#create correlation graph
+
+cor(temp2$father, temp2$reduced.data.G3)
+summary(lm(reduced.data.G3 ~ father, temp2))
+
+temp3 = data.frame(temp2$reduced.data.G3, temp2$father, temp2$mother)
+
+job_cor = cor(temp3)
+print(job_cor)
+
+name = c("G3","Fjob","Mjob")
+
+colnames(job_cor) = name
+rownames(job_cor) = name
+
+
+corrplot(job_cor, method = "circle", tl.cex = 0.7, tl.col = "black")
+```
+
+```{r}
+#fit 5 different models and calculate the R^2
+fit1 = lm(G3~G1, data = reduced.data)
+fit2 = lm(G3~G2, data = reduced.data)
+fit3 = lm(G3~failures, data = reduced.data)
+fit4 = lm(G3~absences, data = reduced.data)
+fit5 = lm(G3~schoolsup, data = reduced.data)
+rsquares = data.frame(model = c("G3~G1", "G3~G2", "G3~failures", "G3~absences", "G3~higher"),
+                          R2 = c(summary(fit1)$r.squared, summary(fit2)$r.squared,
+                                 summary(fit3)$r.squared, summary(fit4)$r.squared, summary(fit5)$r.squared))
+rsquares
+```
+
+```{r}
+#G3 is more correlated with number of past failures than number of absences
+ggplot(reduced.data, aes(absences, G3, fill=factor(failures))) +
+  geom_boxplot() +
+  ggtitle("Boxplot of G3 by Absences and Past Failures") +
+  labs(fill = "Number of Past Failures")
+```
+
+```{r}
+#boxplot of G3 by number of past failures
+boxplot(reduced.data$G3 ~ reduced.data$failures,
+        col='skyblue',
+        main='G3 by Number of Past Failures',
+        xlab='Number of Past Failures',
+        ylab='G3')
+```
+```{r}
+#boxplots for G3 in relation to whether students want higher education
+ggplot(data = reduced.data, aes(x = higher, y = G3, fill = higher)) +
+  geom_boxplot() +
+    labs(title = 'Higher Education Goals vs. G3', x = 'Higher Education', y = 'G3') 
+
+```
+
+
+```{r}
+#changes all variables into numerical values
+df_dummy = model.matrix(~ . - 1, data = reduced.data)
+df_dummy = data.frame(df_dummy)
+df_dummy
+```
+
+```{r}
+#set seed to get the same output
+set.seed(800)
+#create a random forest model
+rf_model = randomForest(G3 ~ ., data = df_dummy, importance = TRUE)
+
+#find the importance of each feature
+importance = importance(rf_model)
+importance
+importance_df = data.frame(Variable = rownames(importance), Importance = importance[, 1])
+importance_df = importance_df[order(importance_df$Importance, decreasing = TRUE), ]
+print(importance_df)
+
+#we can pick which features to use based on how many we want to use and starting from the 
+#top or choosing all variables over a certain threshold 
+
+```
+
+```{r}
+#calculate the correlation matrix
+cor_matrix = cor(df_dummy)
+#print all the correlations between each variable with G3
+cor_with_g3 = cor_matrix[, "G3"]
+cor_with_g3 = cor_with_g3[order(abs(cor_with_g3), decreasing = TRUE)]
+print(cor_with_g3)
+```
+
+```{r}
+#correlation matrix of the most correlated numeric variables 
+temp = df_dummy[, (names(df_dummy) %in% c("G3", "G1", "G2", "failures", "absences", "schoolsupyes", "Medu", "Walc", "Mjobservices"))]
+datamatrix = cor(temp)
+corrplot(datamatrix,method = "number")
+```
+
+```{r}
+
+# Create the scatter plots
+p1 = ggplot(reduced.data, aes(x=G1, y=G3)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs G1", x="G1", y="G3")
+
+p2 = ggplot(reduced.data, aes(x=G2, y=G3)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs G2", x="G2", y="G3")
+
+p3 = ggplot(reduced.data, aes(x=failures, y=G3)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs failures", x="failures", y="G3")
+
+p4 = ggplot(reduced.data, aes(x=absences, y=G3)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs absences", x="absences", y="G3")
+
+grid.arrange(p1, p2, p3, p4, ncol=2)
+
+```
+
+
+```{r}
+
+k = 3 #set 3 clusters
+
+
+# G3 vs G1
+
+kmeans_G1 = kmeans(reduced.data[, c("G1", "G3")], centers = k)
+reduced.data$cluster_G1 = as.factor(kmeans_G1$cluster)
+p11 = ggplot(reduced.data, aes(x=G1, y=G3, color=cluster_G1)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs G1", x="G1", y="G3")
+
+# G3 vs G2
+kmeans_G2 = kmeans(reduced.data[, c("G2", "G3")], centers = k)
+reduced.data$cluster_G2 = as.factor(kmeans_G2$cluster)
+p22 = ggplot(reduced.data, aes(x=G2, y=G3, color=cluster_G2)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs G2", x="G2", y="G3")
+
+# G3 vs failures
+kmeans_failures = kmeans(reduced.data[, c("failures", "G3")], centers = k)
+reduced.data$cluster_failures = as.factor(kmeans_failures$cluster)
+p33 = ggplot(reduced.data, aes(x=failures, y=G3, color=cluster_failures)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs failures", x="failures", y="G3")
+
+# G3 vs absences
+kmeans_absences = kmeans(reduced.data[, c("absences", "G3")], centers = k)
+reduced.data$cluster_absences = as.factor(kmeans_absences$cluster)
+p44 = ggplot(reduced.data, aes(x=absences, y=G3, color=cluster_absences)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs absences", x="absences", y="G3")
+
+grid.arrange(p11, p22, p33, p44, ncol=2)
+```
+
+
+
+```{r}
+
+# calculate within cluster sum of squares
+wss = function(reduced.data, max_clusters) {
+  wss_values = numeric(max_clusters)
+  for (k in 1:max_clusters) {
+    kmeans_result = kmeans(reduced.data, centers = k, nstart = 20)
+    wss_values[k] = kmeans_result$tot.withinss
+  }
+  return(wss_values)
+}
+
+#set a max amount of clusters
+max_clusters = 10
+
+#find the variance for each set of variables
+
+# G3 vs G1
+wss_G1 = wss(reduced.data[, c("G1", "G3")], max_clusters)
+
+# G3 vs G2
+wss_G2 = wss(reduced.data[, c("G2", "G3")], max_clusters)
+
+# G3 vs failures
+wss_failures = wss(reduced.data[, c("failures", "G3")], max_clusters)
+
+# G3 vs absences
+wss_absences = wss(reduced.data[, c("absences", "G3")], max_clusters)
+
+# Create Elbow plots
+elbow_plot = function(wss_values, title) {
+  data.frame(k = 1:max_clusters, wss = wss_values) %>%
+    ggplot(aes(x = k, y = wss)) +
+    geom_line() +
+    geom_point() +
+    labs(title = title, x = "Number of Clusters", y = "Variation Among Clusters") +
+    scale_x_continuous(breaks = 1:max_clusters)
+}
+
+#plot the elbow plots
+p1_elbow = elbow_plot(wss_G1, "G3 vs G1")
+p2_elbow = elbow_plot(wss_G2, "G3 vs G2")
+p3_elbow = elbow_plot(wss_failures, "G3 vs failures")
+p4_elbow = elbow_plot(wss_absences, "G3 vs absences")
+
+grid.arrange(p1_elbow, p2_elbow, p3_elbow, p4_elbow, ncol=2)
+
+
+```
+
+```{r}
+k1 = 3
+k2 = 3
+k3 = 3
+k4 = 4
+
+
+# G3 vs G1
+kmeans_G1 = kmeans(reduced.data[, c("G1", "G3")], centers = k1)
+reduced.data$cluster_G1 = as.factor(kmeans_G1$cluster)
+p1 = ggplot(reduced.data, aes(x=G1, y=G3, color=cluster_G1)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs G1", x="G1", y="G3")
+
+# G3 vs G2
+kmeans_G2 = kmeans(reduced.data[, c("G2", "G3")], centers = k2)
+reduced.data$cluster_G2 = as.factor(kmeans_G2$cluster)
+p2 = ggplot(reduced.data, aes(x=G2, y=G3, color=cluster_G2)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs G2", x="G2", y="G3")
+
+# G3 vs failures
+kmeans_failures = kmeans(reduced.data[, c("failures", "G3")], centers = k3)
+reduced.data$cluster_failures = as.factor(kmeans_failures$cluster)
+p3 = ggplot(reduced.data, aes(x=failures, y=G3, color=cluster_failures)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs failures", x="failures", y="G3")
+
+# G3 vs absences
+kmeans_absences = kmeans(reduced.data[, c("absences", "G3")], centers = k4)
+reduced.data$cluster_absences = as.factor(kmeans_absences$cluster)
+p4 = ggplot(reduced.data, aes(x=absences, y=G3, color=cluster_absences)) +
+  geom_point(alpha=0.5) +
+  labs(title="G3 vs absences", x="absences", y="G3")
+
+grid.arrange(p1,p2,p3,p4)
+```
+
